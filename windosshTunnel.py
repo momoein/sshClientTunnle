@@ -19,10 +19,10 @@ def run(command_to_run, showout=True):
         print("Error:", error)
 
 ### configs
-username = 'bus110'
-address = 'microb-1.cftgbhujm.shop'  # IP or Domain
-server_port = '6789'
-local_port = '3090'
+username = '' 
+address = ''  # IP or Domain
+server_port = ''
+local_port = '3090' # or whatever
 
 if __name__ == "__main__":
     command = f"ssh {username}@{address} -p {server_port} -D {local_port} -N"
