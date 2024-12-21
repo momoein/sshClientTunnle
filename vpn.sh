@@ -6,23 +6,39 @@ user=""
 ipv4=""
 ipv6=""
 port=""
-local_port=""
+local_port="3090"
 
 
 # Initialize variables
 gui_mode=0
 sshuttle_mode=0
 ipv=""
+system_proxy_mode=0
 
 
 usage() {
     echo "Usage: $0 [-g] [-s] [-v ip_version]"
-    echo "  -g                Launch GUI mode"
-    echo "  -v ip_version     Specify VPN server ip/address version (4 or 6)"
-    echo "  -s                sshuttle (requires -v)"
-    exit 1
+    echo "  [-g | --gui]                      Launch GUI mode"
+    echo "  [-v | --ip-version] ip_version    Specify IP version (4 or 6)"
+    echo "  [-s | --sshuttle]                 Use sshuttle mode (requires -v)"
+    echo "  [-p | --system-proxy]             set system proxy to manual"
 }
 
+
+clean_exit() {
+    if [[ system_proxy_mode -eq 1 ]]; then
+        gsettings set org.gnome.system.proxy mode 'none'
+        system_proxy_mode=0
+    fi
+    echo "Gracefully shutting down..."
+    exit "${1:-0}"  # Exit with the provided code or default to 0
+}
+# Trap SIGINT (Ctrl+C) and SIGTERM (termination signal) to call the cleanup function
+trap clean_exit SIGINT SIGTERM
+
+set_system_proxy() {
+    gsettings set org.gnome.system.proxy mode 'manual'
+}
 
 ssh_v4() {
     while true; do
@@ -57,7 +73,7 @@ start_vpn() {
 
     if [ -z "$ipv" ]; then
         echo "Error: IP version is required!"
-        usage
+        clean_exit 1
     fi
 
     if [ "$sshuttle_mode" -eq 0 ]; then
@@ -67,7 +83,7 @@ start_vpn() {
             ssh_v6
         else
             echo "Error: Invalid IP version! Use 4 or 6."
-            exit 1
+            clean_exit 1
         fi
     elif [ "$sshuttle_mode" -eq 1 ]; then
         if [ "$ipv" == "4" ]; then
@@ -76,7 +92,7 @@ start_vpn() {
             sshuttle_v6
         else
             echo "Error: Invalid IP version! Use 4 or 6."
-            exit 1
+            clean_exit 1
         fi
     fi
 }
@@ -95,7 +111,7 @@ launch_gui() {
 
     if [ -z "$action" ]; then
         zenity --error --text="No action selected. Exiting."
-        exit 1
+        clean_exit 1
     fi
 
     case "$action" in
@@ -119,34 +135,53 @@ launch_gui() {
 }
 
 
-# Parse options using getopts
-while getopts ":gsv:" opt; do
-  case $opt in
-    g)  # Enable GUI mode
-        gui_mode=1
-        ;;
-    v)  # Ip Version
-        ipv=$OPTARG
-        ;;
-    s)  # sshuttle
-        sshuttle_mode=1
-        ;;
-    \?) # Invalid option
-        echo "Invalid option: -$OPTARG" >&2
-        usage
-        ;;
-    :)  # Missing argument for an option
-        echo "Option -$OPTARG requires an argument." >&2
-        usage
-        ;;
-  esac
+VALID_ARGS=$(getopt -o gsv:ph --long gui,sshuttle,ip-version:,system-proxy,help -- "$@")
+if [[ $? -ne 0 ]]; then
+    usage
+    clean_exit 1
+fi
+
+eval set -- "$VALID_ARGS"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -g | --gui)
+            gui_mode=1
+            shift
+            ;;
+        -s | --sshuttle)
+            sshuttle_mode=1
+            shift
+            ;;
+        -v | --ip-version)
+            ipv=$2
+            shift 2
+            ;;
+        -p | --system-proxy)
+            system_proxy_mode=1
+            set_system_proxy
+            shift
+            ;;
+        -h | --help)
+            usage
+            clean_exit 0
+            ;;
+        --)
+            shift
+            break
+            ;;
+        *)
+            echo "Invalid option: $1"
+            usage
+            clean_exit 1
+            ;;
+    esac
 done
+
+
 
 # Logic to handle options
 if [ "$gui_mode" -eq 1 ]; then
   launch_gui
-elif [ "$gui_mode" -eq 0 ]; then
-  start_vpn
 else
-  usage
+  start_vpn
 fi
